@@ -96,7 +96,7 @@ class LoginWindow(QtWidgets.QWidget):
                                   "для следующего входа.\n"
                                   "Если убрать галочку логин\n"
                                   "и пароль будут забыты.")
-        self.info_icon.setCursor(QtGui.QCursor(QtCore.Qt.WhatsThisCursor))
+        self.info_icon.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WhatsThisCursor))
         self.info_icon.setIconSize(QtCore.QSize(16, 16))
 
         auto_auth_layout = QtWidgets.QHBoxLayout()
@@ -273,9 +273,9 @@ class LoginWindow(QtWidgets.QWidget):
 
     def prompt_update_required(self, url: str, actual_ver: str) -> None:
         dlg = QtWidgets.QMessageBox(self)
-        dlg.setIcon(INFO_ICON_PATH)
+        dlg.setIconPixmap(QtGui.QPixmap(INFO_ICON_PATH))
         dlg.setWindowTitle("Доступно обновление")
-        dlg.setTextFormat(QtCore.Qt.RichText)
+        dlg.setTextFormat(QtCore.Qt.TextFormat.RichText)
         dlg.setText(
             f"<b>Требуется обновление приложения.</b><br>"
             f"Текущая версия: <code>{VERSION}</code><br>"
@@ -286,7 +286,7 @@ class LoginWindow(QtWidgets.QWidget):
         )
         dlg.setStandardButtons(QtWidgets.QMessageBox.Open | QtWidgets.QMessageBox.Close)
 
-        dlg.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        dlg.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextBrowserInteraction)
         dlg.setEscapeButton(QtWidgets.QMessageBox.Close)
 
         btn = dlg.button(QtWidgets.QMessageBox.Open)

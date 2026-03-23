@@ -90,7 +90,7 @@ class BrowserApp(QtWidgets.QWidget):
                                   "Если Вы уже авторизованы\n"
                                   "уберите галочку либо\n"
                                   "дождитесь входа в ЛК.")
-        self.info_icon.setCursor(QtGui.QCursor(QtCore.Qt.WhatsThisCursor))
+        self.info_icon.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WhatsThisCursor))
         self.info_icon.setIconSize(QtCore.QSize(16, 16))
 
         self.clear_checkbox.stateChanged.connect(self.clear_text_button)
