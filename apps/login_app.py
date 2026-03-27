@@ -133,7 +133,7 @@ class LoginWindow(QtWidgets.QWidget):
             self.key = self.db_conn.get_key()
             actual_version = self.db_conn.get_version()
 
-            if actual_version.version != VERSION and actual_version.version != '1.0.9':
+            if actual_version.version != VERSION and actual_version.version != '2.0.1':
                 self.login_button.setText("Доступно обновление")
                 logger.info(description=f"Обнаружена новая версия: {actual_version.version} (у вас {VERSION})")
                 self.prompt_update_required(url=actual_version.url, actual_ver=actual_version.version)

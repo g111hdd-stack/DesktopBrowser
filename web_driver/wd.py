@@ -3,16 +3,20 @@ import time
 import shutil
 import platform
 import datetime
+from tkinter import messagebox
+import tkinter as tk
 
 from typing import Type
 from selenium import webdriver
 from contextlib import suppress
+
+from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions
-from selenium.common.exceptions import NoSuchWindowException, TimeoutException
+from selenium.common.exceptions import NoSuchWindowException, TimeoutException, NoSuchElementException
 from selenium.common.exceptions import InvalidSessionIdException, WebDriverException
 
 from selenium.webdriver.firefox.options import Options
@@ -107,6 +111,8 @@ class WebDriver:
         Проверяет, загружена ли страница, и запускает соответствующую стратегию авторизации
         (WB, Ozon, Yandex) по URL. Добавляет и убирает визуальный оверлей во время работы.
         """
+
+
         try:
             self.add_overlay()  # затемнение экрана с сообщением
             WebDriverWait(self.driver, TIME_AWAIT * 4).until(
@@ -140,6 +146,8 @@ class WebDriver:
                     self.wb_auth(self.marketplace)
                 elif self.marketplace.marketplace == 'Yandex':
                     self.ya_auth(self.marketplace)
+                elif self.marketplace.marketplace == 'МВидео':
+                    self.mvideo_auth(self.marketplace)
 
             # Если уже перешли на личный кабинет — логируем успешный вход
             if self.marketplace.domain in last_url:
@@ -151,6 +159,8 @@ class WebDriver:
                 self.driver.get(f'{self.marketplace.domain}/{self.client_id}/marketplace')
                 logger.info(user=self.user, proxy=self.proxy,
                             description=f"{self.log_startswith}Вход в ЛК выполнен")
+
+
 
             self.remove_overlay()  # убираем затемнение
 
@@ -273,6 +283,7 @@ class WebDriver:
                 Результат:
                     datetime.datetime: Время запроса сообщения
             """
+            self.add_overlay()
             logger.info(user=self.user, proxy=self.proxy,
                         description=f"{self.log_startswith}Проверка на незавершённую авторизацию")
 
@@ -310,8 +321,8 @@ class WebDriver:
                 Параметры:
                     r(int, optional): количество проверок
             """
+            self.add_overlay()
             for _ in range(r):
-                self.add_overlay()
                 time.sleep(TIME_AWAIT)
                 self.driver.get(marketplace.domain)
                 if marketplace.domain in self.driver.current_url:
@@ -329,8 +340,8 @@ class WebDriver:
                 Параметры:
                     tr(datetime.datetime): время запроса
             """
-
             # Получаем письмо с кодом (до 20 попыток с паузами)
+            self.add_overlay()
             mail_client = YandexMailClient(mail=self.mail, token=self.token, db_conn=self.db_conn)
             exception = None
             for _ in range(20):
@@ -358,12 +369,13 @@ class WebDriver:
             try:
                 time.sleep(TIME_AWAIT)
                 input_code = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
-                    expected_conditions.element_to_be_clickable((By.CSS_SELECTOR, "input[type='number']")))
+                    expected_conditions.element_to_be_clickable((By.CSS_SELECTOR, "input[type='text']")))
                 self.remove_overlay()
                 input_code.send_keys(mes)
                 self.add_overlay()
+
             except TimeoutException:
-                raise Exception('Отсутствует поле ввода кода')
+                raise Exception('Отсутствует поле ввода email кода')
 
         def phone_code(tr: datetime.datetime):
             """
@@ -372,7 +384,7 @@ class WebDriver:
                 Параметры:
                     tr(datetime.datetime): время запроса
             """
-
+            self.add_overlay()
             # Получаем код подтверждения из базы
             mes = self.db_conn.get_phone_message(user=self.user, phone=self.phone, marketplace=marketplace.marketplace)
             logger.info(user=self.user, proxy=self.proxy,
@@ -383,12 +395,13 @@ class WebDriver:
             try:
                 time.sleep(TIME_AWAIT)
                 input_code = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
-                    expected_conditions.element_to_be_clickable((By.CSS_SELECTOR, "input[type='number']")))
+                    expected_conditions.element_to_be_clickable((By.CSS_SELECTOR, "input[type='text']")))
+
                 self.remove_overlay()
                 input_code.send_keys(mes)
                 self.add_overlay()
             except TimeoutException:
-                raise Exception('Отсутствует поле ввода кода')
+                raise Exception('Отсутствует поле ввода Phone кода')
 
         def selection_func():
             """
@@ -397,6 +410,7 @@ class WebDriver:
                 Результат:
                     функция выполнения
             """
+            self.add_overlay()
             phone_text = self.phone[-4:][:2] + ' ' + self.phone[-4:][2:]
             for _ in range(3):
                 try:
@@ -413,7 +427,6 @@ class WebDriver:
                             return select_func
                 except TimeoutException:
                     self.driver.refresh()
-                    self.add_overlay()
             else:
                 raise Exception('Страница не получена')
 
@@ -435,6 +448,7 @@ class WebDriver:
                 time.sleep(TIME_AWAIT)
                 button_mail = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
                     expected_conditions.presence_of_all_elements_located((By.CSS_SELECTOR, '.content button')))[-2]
+
                 self.remove_overlay()
                 button_mail.click()
                 self.add_overlay()
@@ -443,8 +457,11 @@ class WebDriver:
                 input_mail = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
                     expected_conditions.element_to_be_clickable((By.ID, "email")))
                 input_mail.send_keys(Keys.CONTROL, 'a')
+
+                self.remove_overlay()
                 input_mail.send_keys(Keys.DELETE)
                 input_mail.send_keys(self.mail)
+                self.add_overlay()
 
                 time.sleep(TIME_AWAIT)
                 button_push = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
@@ -452,7 +469,6 @@ class WebDriver:
                 break
             except (TimeoutException, IndexError):
                 self.driver.refresh()
-                self.add_overlay()
         else:
             raise Exception('Страница не получена')
 
@@ -463,6 +479,15 @@ class WebDriver:
         func(tr=time_request)
 
         logger.info(user=self.user, proxy=self.proxy, description=f"{self.log_startswith}Вход в ЛК")
+
+        # Пытаемся найти форму 'Что-то пошло не так'
+        with suppress(TimeoutException):
+            error_title = WebDriverWait(self.driver, TIME_AWAIT * 2).until(
+                expected_conditions.visibility_of_element_located(
+                    (By.XPATH, "//*[contains(text(), 'Что-то пошло не так')]")))
+
+            if error_title:
+                self.driver.get(marketplace.domain)
 
         # Проверка: загрузился ли личный кабинет
         time.sleep(TIME_AWAIT)
@@ -493,6 +518,48 @@ class WebDriver:
     def ya_auth(self, marketplace: Market) -> None:
         """Авторизация в Яндекс.Маркет. Используется логин, пароль и код подтверждения по SMS"""
 
+        def check_login() -> bool:
+            if 'https://id.yandex.ru' in self.driver.current_url:
+                self.driver.get(f'{self.marketplace.domain}/{self.client_id}/marketplace')
+                logger.info(user=self.user,proxy=self.proxy,
+                    description=f"{self.log_startswith}Вход в ЛК выполнен")
+                return True
+            return False
+
+        def confirm_phone_challenge() -> bool:
+            """
+            Нажимает кнопку 'Подтвердить' на экране подтверждения входа,
+            создаёт заявку на SMS и запускает ввод кода.
+
+            Возвращает:
+                True  - если шаг подтверждения выполнен
+                False - если экран подтверждения не найден
+            """
+
+            with suppress(TimeoutException):
+                # Ожидаем кнопку подтверждения входа
+                button_enter = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.XPATH, "//button[.//span[contains(text(), 'Подтвердить')]]")))
+
+                logger.info(user=self.user,proxy=self.proxy,
+                    description=f"{self.log_startswith}Проверка заявки на СМС на номер {self.phone}")
+
+                # Отмечаем время начала запроса кода
+                time_request = get_moscow_time()
+
+                # Проверка на незавершённую авторизацию с этим номером
+                self.db_conn.check_phone_message(user=self.user,phone=self.phone,time_request=time_request)
+
+                self.remove_overlay()
+                button_enter.click()
+                self.add_overlay()
+
+                enter(time_request)
+                return True
+
+            return False
+
         def enter(tr):
             logger.info(user=self.user, proxy=self.proxy,
                         description=f"{self.log_startswith}Ожидание кода на номер {self.phone}")
@@ -516,18 +583,33 @@ class WebDriver:
                         description=f"{self.log_startswith}Код на номер {self.phone} получен: {mes}")
             logger.info(user=self.user, proxy=self.proxy,
                         description=f"{self.log_startswith}Ввод кода {mes}")
-
-            # Вводим код
             try:
                 time.sleep(TIME_AWAIT)
-                input_code = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
-                    expected_conditions.element_to_be_clickable(
-                        (By.XPATH, "//input[@data-testid='field:input-phoneCode']")
-                    )
-                )
-                self.remove_overlay()
-                input_code.send_keys(mes)
-                self.add_overlay()
+
+                try:
+                    # Старый вариант: одно поле ввода
+                    input_code = WebDriverWait(self.driver, TIME_AWAIT * 2).until(
+                        expected_conditions.element_to_be_clickable(
+                            (By.XPATH, "//input[@data-testid='field:input-phoneCode']")))
+
+                    self.remove_overlay()
+                    input_code.send_keys(mes)
+                    self.add_overlay()
+
+                except TimeoutException:
+                    # Новый вариант: код разбит на несколько полей
+                    code_inputs = WebDriverWait(self.driver, TIME_AWAIT * 2).until(
+                        expected_conditions.presence_of_all_elements_located(
+                            (By.CSS_SELECTOR, "input[data-testid='code-field-segment']")))
+
+                    if not code_inputs:
+                        raise TimeoutException()
+
+                    self.remove_overlay()
+                    for input_el, digit in zip(code_inputs, mes):
+                        input_el.send_keys(digit)
+                    self.add_overlay()
+
             except TimeoutException:
                 raise Exception('Отсутствует поле ввода кода')
 
@@ -537,65 +619,86 @@ class WebDriver:
             for _ in range(4):
                 self.add_overlay()
                 time.sleep(TIME_AWAIT)
-                if 'https://id.yandex.ru' in self.driver.current_url:
-                    self.driver.get(f'{self.marketplace.domain}/{self.client_id}/marketplace')
-                    logger.info(user=self.user, proxy=self.proxy,
-                                description=f"{self.log_startswith}Вход в ЛК выполнен")
+                if check_login():
                     return
             else:
                 logger.info(user=self.user, proxy=self.proxy,
                             description=f"{self.log_startswith}Автоматизация завершена, вход не подтверждён")
 
-        def check_login() -> bool:
-            if 'https://id.yandex.ru' in self.driver.current_url:
-                self.driver.get(f'{self.marketplace.domain}/{self.client_id}/marketplace')
-                logger.info(user=self.user, proxy=self.proxy,
-                            description=f"{self.log_startswith}Вход в ЛК выполнен")
-                return True
+
+
+        def re_login() -> bool:
+            """Проверка сценария с уже выбранным аккаунтом Яндекса"""
+
+            with suppress(TimeoutException, NoSuchElementException):
+                self.add_overlay()
+                time.sleep(TIME_AWAIT)
+
+                current_account = WebDriverWait(self.driver, TIME_AWAIT * 2).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.CSS_SELECTOR, ".UserLogin.AuthListReturnBtn-user-login")))
+
+                account_login = current_account.find_element(
+                    By.CSS_SELECTOR, ".UserLogin-loginElement"
+                ).text.strip().lower()
+
+                if account_login != self.mail.split('@')[0].lower():
+                    return False
+
+                logger.info(user=self.user,proxy=self.proxy,
+                    description=f"{self.log_startswith}Найден аккаунт {account_login}, вводим пароль")
+
+                input_pass = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.XPATH, "//input[@data-testid='text-field-input']")))
+
+                self.remove_overlay()
+                input_pass.send_keys(self.pass_mail)
+                self.add_overlay()
+
+                button_enter_pass = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.XPATH, "//button[@data-testid='password-next']")))
+
+                self.remove_overlay()
+                button_enter_pass.click()
+                self.add_overlay()
+
+                time.sleep(TIME_AWAIT)
+
+                if check_login():
+                    return True
+                if confirm_phone_challenge():
+                    return True
+
+                return False
+
             return False
 
-        time.sleep(TIME_AWAIT)
+        def login_by_mail() -> bool:
+            """
+            Сценарий входа через 'Ещё' -> вход по логину -> почта/пароль.
 
-        if check_login():
-            return
+            Возвращает:
+                True  - если сценарий выполнен
+                False - если элементы сценария не найдены
+            """
 
-        with suppress(TimeoutException):
-            user_login = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
-                expected_conditions.element_to_be_clickable((By.CSS_SELECTOR, ".UserLogin"))
-            )
-            self.remove_overlay()
-            user_login.click()
-            self.add_overlay()
-
-            logger.info(user=self.user, proxy=self.proxy, description=f"{self.log_startswith}Ввод пароля от почты")
-            time.sleep(TIME_AWAIT)
-
-            input_pass = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
-                expected_conditions.element_to_be_clickable(
-                    (By.XPATH, "//input[@data-testid='text-field-input' and @aria-label='Пароль']")
-                )
-            )
-            input_pass.send_keys(self.pass_mail)
-
-            button_enter_pass = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
-                expected_conditions.element_to_be_clickable((By.XPATH, "//button[@data-testid='password-next']"))
-            )
-            self.remove_overlay()
-            button_enter_pass.click()
-            self.add_overlay()
-
-            time.sleep(TIME_AWAIT)
-
-            if check_login():
-                return
-
-        for _ in range(3):
+            # Нажимаем кнопку «Ещё», чтобы выбрать вход по логину
             with suppress(TimeoutException):
+                time.sleep(TIME_AWAIT)
+
+                # Если уже авторизован — переходим в ЛК
+                if 'https://id.yandex.ru' in self.driver.current_url:
+                    self.driver.get(f'{self.marketplace.domain}/{self.client_id}/marketplace')
+                    logger.info(user=self.user,proxy=self.proxy,
+                                description=f"{self.log_startswith}Вход в ЛК выполнен")
+                    return True
+
                 button_more = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
                     expected_conditions.element_to_be_clickable(
-                        (By.XPATH, "//button[@data-testid='split-add-user-more-button']")
-                    )
-                )
+                        (By.XPATH, "//button[@data-testid='split-add-user-more-button']")))
+
                 self.remove_overlay()
                 button_more.click()
                 self.add_overlay()
@@ -604,83 +707,214 @@ class WebDriver:
 
                 button_by_login = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
                     expected_conditions.visibility_of_element_located(
-                        (By.XPATH, "//div[@data-testid='menu-option-switchToLogin']")
-                    )
-                )
+                        (By.XPATH, "//div[@data-testid='menu-option-switchToLogin']")))
 
                 self.remove_overlay()
                 button_by_login.click()
                 self.add_overlay()
-                break
+
+            logger.info(user=self.user,proxy=self.proxy,description=f"{self.log_startswith}Ввод почты {self.mail}")
+
+            # Ввод логина (email)
+            with suppress(TimeoutException):
+                time.sleep(TIME_AWAIT)
+
+                input_mail = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.XPATH, "//input[@data-testid='text-field-input']")))
+
+                self.remove_overlay()
+                input_mail.send_keys(self.mail)
+                self.add_overlay()
+
+                time.sleep(TIME_AWAIT)
+
+                button_enter_mail = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.XPATH, "//button[@data-testid='split-add-user-next-login']")))
+
+                # Отмечаем время начала запроса кода
+                time_request = get_moscow_time()
+
+                # Проверка на незавершённую авторизацию с этим номером
+                self.db_conn.check_phone_message(user=self.user,phone=self.phone,time_request=time_request)
+
+                self.remove_overlay()
+                button_enter_mail.click()
+                self.add_overlay()
+
+                # Если сразу появилось поле SMS-кода
+                with suppress(TimeoutException):
+                    time.sleep(TIME_AWAIT)
+
+                    WebDriverWait(self.driver, TIME_AWAIT * 4).until(
+                        expected_conditions.element_to_be_clickable(
+                            (By.XPATH, "//input[@data-testid='field:input-phoneCode']")))
+
+                    self.remove_overlay()
+                    enter(time_request)
+                    self.add_overlay()
+                    return True
+
+            logger.info(user=self.user,proxy=self.proxy,description=f"{self.log_startswith}Ввод пароля от {self.mail}")
+
+            self.add_overlay()
+
+            # Ввод пароля от почты
+            with suppress(TimeoutException):
+                time.sleep(TIME_AWAIT)
+
+                input_pass = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.XPATH, "//input[@data-testid='text-field-input']")))
+
+                self.remove_overlay()
+                input_pass.send_keys(self.pass_mail)
+                self.add_overlay()
+
+                button_enter_pass = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.XPATH, "//button[@data-testid='password-next']")))
+
+                self.remove_overlay()
+                button_enter_pass.click()
+                self.add_overlay()
+
+                time.sleep(TIME_AWAIT)
+
+                # Если уже авторизован — переходим в ЛК
+                if check_login():
+                    return True
+
+                if confirm_phone_challenge():
+                    return True
+
+            return False
+
+        for _ in range(3):
+            if re_login():
+                return
+
+            if login_by_mail():
+                return
         else:
             raise Exception('Страница не получена')
 
-        logger.info(user=self.user, proxy=self.proxy, description=f"{self.log_startswith}Ввод почты {self.mail}")
+    def mvideo_auth(self, marketplace: Market) -> bool | None:
+        """Авторизация в МВидео по номеру телефона"""
 
-        try:
-            time.sleep(TIME_AWAIT)
-            input_mail = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
-                expected_conditions.element_to_be_clickable(
-                    (By.XPATH, "//input[@data-testid='text-field-input' and @aria-label='Логин или email']")
-                )
-            )
-            input_mail.send_keys(self.mail)
+        def check_login() -> bool:
+            if 'https://sellers.mvideo.ru/mpa' in self.driver.current_url:
+                self.driver.get(f'{self.marketplace.domain}/{self.client_id}/marketplace')
+                logger.info(user=self.user,proxy=self.proxy,
+                    description=f"{self.log_startswith}Вход в ЛК выполнен")
+                return True
+            return False
 
-            time.sleep(TIME_AWAIT)
-            button_enter_mail = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
-                expected_conditions.element_to_be_clickable(
-                    (By.XPATH, "//button[@data-testid='split-add-user-next-login']")
-                )
-            )
-            self.remove_overlay()
-            button_enter_mail.click()
-            self.add_overlay()
-        except TimeoutException:
-            raise Exception('Не удалось ввести Логин')
-
-        logger.info(user=self.user, proxy=self.proxy, description=f"{self.log_startswith}Ввод пароля от почты")
-
-        try:
-            time.sleep(TIME_AWAIT)
-            input_pass = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
-                expected_conditions.element_to_be_clickable(
-                    (By.XPATH, "//input[@data-testid='text-field-input' and @aria-label='Пароль']")
-                )
-            )
-            input_pass.send_keys(self.pass_mail)
-
-            button_enter_pass = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
-                expected_conditions.element_to_be_clickable((By.XPATH, "//button[@data-testid='password-next']")))
-
-            time_request = get_moscow_time()
-
-            self.db_conn.check_phone_message(user=self.user, phone=self.phone, time_request=time_request)
-
-            self.remove_overlay()
-            button_enter_pass.click()
+        def enter(tr):
             self.add_overlay()
 
-            time.sleep(TIME_AWAIT)
+            logger.info(user=self.user,proxy=self.proxy,
+                        description=f"{self.log_startswith}Ожидание кода на номер {self.phone}")
 
-            if check_login():
+            # Добавляем заявку на получение кода
+            for _ in range(3):
+                try:
+                    self.db_conn.add_phone_message( user=self.user,
+                                                    phone=self.phone,
+                                                    marketplace=marketplace.marketplace,
+                                                    time_request=tr)
+                    break
+                except IntegrityError:
+                    time.sleep(TIME_AWAIT)
+            else:
+                raise Exception('Ошибка параллельных запросов')
+
+            # Получаем код подтверждения из базы
+            mes = self.db_conn.get_phone_message(user=self.user,phone=self.phone,
+                                                 marketplace=marketplace.marketplace)
+
+            # Оставляем только цифры
+            mes = ''.join(ch for ch in mes if ch.isdigit())
+
+            logger.info(user=self.user,proxy=self.proxy,
+                        description=f"{self.log_startswith}Код на номер {self.phone} получен: {mes}")
+            logger.info(user=self.user,proxy=self.proxy,
+                        description=f"{self.log_startswith}Ввод кода {mes}")
+
+            check_login()
+            with suppress(TimeoutException):
+                time.sleep(TIME_AWAIT)
+
+                input_code = WebDriverWait(self.driver, TIME_AWAIT * 2).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.CSS_SELECTOR, "mpa-ui-input[formcontrolname='code'] input")))
+
+                self.remove_overlay()
+                input_code.send_keys(mes)
+                self.add_overlay()
+
+                button_confirm = WebDriverWait(self.driver, TIME_AWAIT * 2).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.XPATH, "//button[contains(., 'Подтвердить')]")))
+
+                logger.info(user=self.user,proxy=self.proxy,
+                            description=f"{self.log_startswith} Нажимаем на кнопку подтвердить ")
+
+                self.remove_overlay()
+                button_confirm.click()
+
+
                 return
-        except TimeoutException:
-            raise Exception("Не удалось ввести пароль")
+            raise Exception('Отсутствует поле ввода кода или кнопка подтверждения')
 
-        # with suppress(TimeoutException):
-        #     time.sleep(TIME_AWAIT)
-        #     WebDriverWait(self.driver, TIME_AWAIT * 4).until(
-        #         expected_conditions.element_to_be_clickable(
-        #             (By.XPATH, "//input[@data-testid='field:input-phoneCode']")
-        #         )
-        #     )
-        #
-        #     enter(time_request)
-        #
-        #     time.sleep(TIME_AWAIT)
-        #
-        #     if check_login():
-        #         return
+        for _ in range(3):
+            try:
+                self.add_overlay()
+                time.sleep(TIME_AWAIT)
+                logger.info(user=self.user,proxy=self.proxy,
+                            description=f"{self.log_startswith}Ввод номера телефона {self.phone}")
+
+                # Поле телефона
+                input_phone = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.CSS_SELECTOR, "input[name='phone']")))
+
+                self.remove_overlay()
+                input_phone.clear()
+                input_phone.send_keys(self.phone)
+                self.add_overlay()
+
+                logger.info(user=self.user,proxy=self.proxy,
+                            description=f"{self.log_startswith}Нажимаем кнопку Войти")
+
+                # Отмечаем время начала запроса кода
+                time_request = get_moscow_time()
+
+                # Кнопка "Войти"
+                button_login = WebDriverWait(self.driver, TIME_AWAIT * 4).until(
+                    expected_conditions.element_to_be_clickable(
+                        (By.XPATH, "//button[contains(., 'Войти')]")))
+
+                # Проверка на незавершённую авторизацию с этим номером
+                self.db_conn.check_phone_message(user=self.user,phone=self.phone,time_request=time_request)
+
+                self.remove_overlay()
+                button_login.click()
+                self.add_overlay()
+
+                logger.info(user=self.user,proxy=self.proxy,
+                            description=f"{self.log_startswith}Номер телефона введён, кнопка Войти нажата")
+
+                # Переходим к ожиданию и вводу кода
+                enter(time_request)
+                return
+
+            except TimeoutException:
+                logger.info(user=self.user,proxy=self.proxy,
+                    description=f"{self.log_startswith}Не удалось найти поле телефона или кнопку Войти, повторная попытка")
+
+        raise Exception('Страница не получена')
 
     def add_overlay(self) -> None:
         """
@@ -688,7 +922,7 @@ class WebDriver:
         чтобы заблокировать действия пользователя во время автоматизации.
         Отображает название компании и сообщение: "Идёт авторизация...".
         """
-
+        pass
         self.driver.execute_script(f"""
             (function () {{
                 if (document.getElementById('block-overlay')) return;
@@ -724,7 +958,7 @@ class WebDriver:
         Удаляет оверлей с экрана браузера, восстанавливая возможность взаимодействия со страницей.
         Используется после завершения автоматизации или при ошибке.
         """
-
+        pass
         self.driver.execute_script("""
             (function () {
                 const overlay = document.getElementById('block-overlay');
@@ -756,7 +990,7 @@ class WebDriver:
         if self.auto:
             logger.info(user=self.user, proxy=self.proxy, description=f"{self.log_startswith}Авторизация")
             if self.marketplace.marketplace == 'Ozon':
-                self.driver.get('https://seller.ozon.ru/app/registration/signin?auth=1&amp;locale=ru')
+                self.driver.get('https://sso.ozon.ru/auth')
             else:
                 self.driver.get(url)
             self.add_overlay()
