@@ -804,11 +804,15 @@ class WebDriver:
         """Авторизация в МВидео по номеру телефона"""
 
         def check_login() -> bool:
-            if 'https://sellers.mvideo.ru/mpa' in self.driver.current_url:
+            current_url = self.driver.current_url.rstrip('/')
+
+            if current_url == 'https://sellers.mvideo.ru/mpa':
                 self.driver.get(f'{self.marketplace.domain}/{self.client_id}/marketplace')
-                logger.info(user=self.user,proxy=self.proxy,
-                    description=f"{self.log_startswith}Вход в ЛК выполнен")
+                logger.info(user=self.user,
+                            proxy=self.proxy,
+                            description=f"{self.log_startswith}Вход в ЛК выполнен")
                 return True
+
             return False
 
         def enter(tr):
@@ -842,7 +846,6 @@ class WebDriver:
             logger.info(user=self.user,proxy=self.proxy,
                         description=f"{self.log_startswith}Ввод кода {mes}")
 
-            check_login()
             with suppress(TimeoutException):
                 time.sleep(TIME_AWAIT)
 
@@ -850,6 +853,7 @@ class WebDriver:
                     expected_conditions.element_to_be_clickable(
                         (By.CSS_SELECTOR, "mpa-ui-input[formcontrolname='code'] input")))
 
+                time.sleep(TIME_AWAIT)
                 self.remove_overlay()
                 input_code.send_keys(mes)
                 self.add_overlay()
@@ -859,10 +863,13 @@ class WebDriver:
                         (By.XPATH, "//button[contains(., 'Подтвердить')]")))
 
                 logger.info(user=self.user,proxy=self.proxy,
-                            description=f"{self.log_startswith} Нажимаем на кнопку подтвердить ")
+                            description=f"{self.log_startswith}Нажимаем на кнопку подтвердить ")
 
                 self.remove_overlay()
                 button_confirm.click()
+                time.sleep(TIME_AWAIT)
+                check_login()
+
 
 
                 return
@@ -899,6 +906,7 @@ class WebDriver:
                 # Проверка на незавершённую авторизацию с этим номером
                 self.db_conn.check_phone_message(user=self.user,phone=self.phone,time_request=time_request)
 
+                time.sleep(TIME_AWAIT)
                 self.remove_overlay()
                 button_login.click()
                 self.add_overlay()
